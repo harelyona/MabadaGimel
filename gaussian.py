@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
@@ -46,7 +45,7 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
     x_range = np.linspace(min(time), max(time), 1000)
     fitted_curve = gaussian(x_range, *params)
     plt.plot(x_range, fitted_curve, label='Fitted Gaussian', color=FIT_COLOR)
-    plt.errorbar(time, intensities, yerr=0, label='Data', color=DADA_COLOR, fmt='-o', capsize=CAPSIZE, markersize=1, elinewidth=2, ecolor=ERROR_BAR_COLOR)
+    plt.errorbar(time, intensities, yerr=uncertainty, label='Data', color=DADA_COLOR, fmt='-o', capsize=CAPSIZE, markersize=1, elinewidth=2, ecolor=ERROR_BAR_COLOR)
     plot_config("Intensity vs Time with Gaussian Fit", "Time", "Intensity")
     if save:
         plt.savefig(f"{PLOTS_DIRECTORY}intensity_vs_time.png")
