@@ -15,30 +15,44 @@ DADA_COLOR = "black"
 ERROR_BAR_COLOR = "red"
 DATA_SIZE = 4
 CAPSIZE = 0.5
+d = 0.0027
+haynes_shockley_dir = "data/Haynes-Shockley"
+file1 = f"{haynes_shockley_dir}/Vs_28.3_Vl_27.7_d_2.7.csv"
+file1_time_mask = (0.00001, 0.00003)
+file2 = f"{haynes_shockley_dir}/Vs_35.8_Vl_27.7_d_2.7.csv"
+file2_time_mask = (0.000012, 0.000025)
+file3 = f"{haynes_shockley_dir}/Vs_44_Vl_27.7_d_2.7.csv"
+file3_time_mask = (0.000013 , 0.000025)
+file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
+file4_time_mask = (0.000014, 0.000031)
+DATA_FILES = [file1, file2, file3, file4]
+MASKS = {file1: file1_time_mask, file2: file2_time_mask, file3: file3_time_mask, file4: file4_time_mask}
 
 
 def gaussian(x, A, mu, sigma, D):
     return A * np.exp(- (x - mu)**2 / (2 * sigma**2)) + D
 
 
-def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optional[float] = None) -> Tuple[np.ndarray, np.ndarray]:
+def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optional[float] = None) -> Tuple[
+    np.ndarray, np.ndarray]:
     """
     Extracts time and intensity data from a CSV file.
-    Optionally filters the data to a specified range
-    returning the NumPy arrays.
+    Optionally filters the data to a specified range,
+    drops any NaN values, and returns clean NumPy arrays.
     """
     df = pd.read_csv(file_path)
-    intensities = df.iloc[1:, CSV_VOLT_COLUMN].astype(pd.Float64Dtype())
-    time = df.iloc[1:, CSV_TIME_COLUMN].astype(pd.Float64Dtype())
-    mask = pd.Series(True, index=time.index)
+    intensities_series = pd.to_numeric(df.iloc[1:, CSV_VOLT_COLUMN], errors='coerce')
+    time_series = pd.to_numeric(df.iloc[1:, CSV_TIME_COLUMN], errors='coerce')
+    data_df = pd.DataFrame({'time': time_series, 'intensities': intensities_series}).dropna()
+    mask = pd.Series(True, index=data_df.index)
     if min_val is not None:
-        mask = mask & (time > min_val)
+        mask = mask & (data_df['time'] > min_val)
 
     if max_val is not None:
-        mask = mask & (time < max_val)
+        mask = mask & (data_df['time'] < max_val)
 
-    time_filtered = time[mask]
-    intensities_filtered = intensities[mask]
+    time_filtered = data_df.loc[mask, 'time']
+    intensities_filtered = data_df.loc[mask, 'intensities']
     return time_filtered.values, intensities_filtered.values
 
 
@@ -77,24 +91,79 @@ def linear_fit(x: np.ndarray, y: np.ndarray, show: bool=False) -> Tuple[float, f
         plt.show()
     return slope, intercept
 
+
 def plot_all_data(folder: str) -> None:
     for file_path in os.listdir(folder):
-        time, intensities = extract_data(folder + os.sep + file_path, max_val=0.0001)
-        match = re.search(r'Vs_([\d\.]+)_Vl_([\d\.]+)\.csv', file_path)
+        full_file_path = os.path.join(folder, file_path)
+        time, intensities = extract_data(full_file_path, max_val=0.0001)
+        match = re.search(r'Vs_([\d\.]+)_Vl_([\d\.]+)_d_([\d\.]+)\.csv$', file_path)
         vs_value = float(match.group(1))
         vl_value = float(match.group(2))
-        slope, intercept = linear_fit(*extract_data(folder + os.sep + file_path, max_val=0), show=False)
-        # intensities = intensities - (slope * time + intercept)
-        plt.scatter(time, intensities, label=f"Vs={vs_value}, Vl={vl_value}", s=DATA_SIZE)
+        d_value = float(match.group(3)) / 1000  # Convert mm to m
+        slope, intercept = linear_fit(*extract_data(full_file_path, max_val=0), show=False)
+        plt.scatter(time, intensities, label=f"Vs={vs_value}, Vl={vl_value}, d={d_value}", s=DATA_SIZE)
     plot_config("All Data", "Time", "Intensity")
     plt.show()
 
+def fix_linear_drift(x_data: np.ndarray, y_data: np.ndarray) -> np.ndarray:
+    slope, intercept = linear_fit(x_data, y_data)
+    drift = slope * x_data + intercept
+    corrected_y = y_data - drift
+    return corrected_y
 
-d = 0.0027
+def plot_data(file:str):
+    time, intensities = extract_data(file)
+    plt.scatter(time, intensities)
+    plt.show()
+
+def parse_file_parameters(file_name: str) -> Tuple[float, float, float]:
+    match = re.search(r'Vs_([\d\.]+)_Vl_([\d\.]+)_d_([\d\.]+)\.csv$', file_name)
+    vs_value = float(match.group(1))
+    vl_value = float(match.group(2))
+    d_value = float(match.group(3)) / 1000  # Convert mm to m
+    return vs_value, vl_value, d_value
+
+def plot_mu_vs_Vs() -> None:
+    Vs_values = []
+    mu_values = []
+    for file in DATA_FILES:
+        time, intensities = extract_data(file, *MASKS[file])
+        intensities = fix_linear_drift(time, intensities)
+        params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
+        _, mu, _, _ = params
+        vs_value, _, _ = parse_file_parameters(file)
+        Vs_values.append(vs_value)
+        mu_values.append(mu)
+    plt.scatter(Vs_values, mu_values, s=DATA_SIZE, color=DADA_COLOR, label="Data")
+    plot_config("Mobility vs Source Voltage", "Source Voltage (V)", "Mobility (m^2/Vs)")
+    plt.show()
+
+def plot_sigma_vs_Vs() -> None:
+    Vs_values = []
+    sigma_values = []
+    for file in DATA_FILES:
+        time, intensities = extract_data(file, *MASKS[file])
+        intensities = fix_linear_drift(time, intensities)
+        params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
+        _, _, sigma, _ = params
+        vs_value, _, _ = parse_file_parameters(file)
+        Vs_values.append(vs_value)
+        sigma_values.append(sigma)
+    plt.scatter(Vs_values, sigma_values, s=DATA_SIZE, color=DADA_COLOR, label="Data")
+    plot_config("Sigma vs Source Voltage", "Source Voltage (V)", "Sigma (s)")
+    plt.show()
+
+
+
+
 if __name__ == "__main__":
-    dir = "data/Haynes-Shockley"
-    #plot_all_data(dir)
-    data = extract_data(f"data\Haynes-Shockley\Vs_44_Vl_27.7.csv",)
+    file = file4
+    times, intensities = extract_data(file, *MASKS[file])
+    intensities = fix_linear_drift(times, intensities)
+    #plot_v_vs_time(times, intensities, uncertainty=0)
+    plot_mu_vs_Vs()
+    plot_sigma_vs_Vs()
 
-    #slope, intercept = linear_fit(*data, show=True)
-    plot_v_vs_time(*data,uncertainty=0)
+
+
+
