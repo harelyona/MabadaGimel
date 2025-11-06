@@ -1,34 +1,46 @@
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
-# Load data
+# Load the data
 data = pd.read_csv('data/v_vs_temp_even_better/Non-Shifted Results Clean.csv')
 
-# Create figure with one subplot
-fig, ax1 = plt.subplots(figsize=(10, 6))
+# Filter data for time > 2000 seconds
+data_filtered = data[data['Time'] > 2000].copy()
 
-# Plot voltage vs time on the primary y-axis
-color1 = 'tab:blue'
-ax1.plot(data['Time'], data['Voltage '], color=color1, linewidth=1, label='Voltage')
-ax1.set_xlabel('Time (s)')
-ax1.set_ylabel('Voltage (V)', color=color1)
-ax1.tick_params(axis='y', labelcolor=color1)
-ax1.grid(True, alpha=0.3)
 
-# Create secondary y-axis for temperature
-ax2 = ax1.twinx()
-color2 = 'tab:red'
-# Convert temperature from Celsius to Kelvin with precise conversion
-temperature_kelvin = data['Temprature'] + 273.15
-ax2.plot(data['Time'], temperature_kelvin, color=color2, linewidth=1, label='Temperature')
-ax2.set_ylabel('Temperature (K)', color=color2)
-ax2.tick_params(axis='y', labelcolor=color2)
+# Extract temperature and voltage
+T = data_filtered['Temprature'].values  # Temperature in Celsius
+V = data_filtered['Voltage '].values  # Voltage (related to mobility or carrier concentration)
 
-# Add title and legends
-fig.suptitle('Voltage and Temperature vs Time', fontsize=14)
-ax1.legend(loc='upper left')
-ax2.legend(loc='upper right')
+# Convert temperature to Kelvin
+T_kelvin = T + 273.15
+# T_mask = T_kelvin < 225  
+# T_kelvin = T_kelvin[T_mask]
+# V = V[T_mask]
 
-plt.tight_layout()
-plt.savefig('v_vs_temp_plot.png', dpi=150, bbox_inches='tight')
+T_log = np.log(T_kelvin)
+V_log = np.log(V)
+
+def model_func(T,a, b):
+    return a * T + b
+
+params, covariance = curve_fit(model_func, T_log, V_log, p0=[1.5,0])
+a,b = params
+print(f"Fitted parameters: a = {a}, b = {b}")
+
+x_range = np.linspace(min(T_log), max(T_log), 1000)
+y_fit = model_func(x_range,a, b)
+
+plt.figure(figsize=(10, 6))
+plt.plot(T_log,V_log, 'o', label='Data', markersize=4)
+plt.plot(x_range, y_fit, 'r-', label='Fitted Line')
+# plt.plot(T_kelvin, V, 'o', label='Data', markersize=4)
+plt.xlabel('Temperature (K)')
+plt.ylabel('Voltage (V)')
+plt.title('Voltage vs Temperature')
+plt.grid(True)
+plt.legend()
+plt.savefig('v_vs_temp_fit.png', dpi=300)
 plt.show()
