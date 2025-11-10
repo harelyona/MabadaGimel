@@ -16,15 +16,16 @@ ERROR_BAR_COLOR = "red"
 DATA_SIZE = 4
 CAPSIZE = 0.5
 d = 0.0027
+LAZER_ON_TRESHOLD = 1.1
 haynes_shockley_dir = "data/Haynes-Shockley"
 file1 = f"{haynes_shockley_dir}/Vs_28.3_Vl_27.7_d_2.7.csv"
-file1_time_mask = (0.00001, 0.00003)
+file1_time_mask = (0.00019, 0.00021)
 file2 = f"{haynes_shockley_dir}/Vs_35.8_Vl_27.7_d_2.7.csv"
-file2_time_mask = (0.000012, 0.000025)
+file2_time_mask = (0.00004, 0.0000575)
 file3 = f"{haynes_shockley_dir}/Vs_44_Vl_27.7_d_2.7.csv"
-file3_time_mask = (0.000013 , 0.000025)
+file3_time_mask = (0.00004, 0.0000575)
 file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
-file4_time_mask = (0.000014, 0.000031)
+file4_time_mask = (0.000043, 0.00006)
 DATA_FILES = [file1, file2, file3, file4]
 MASKS = {file1: file1_time_mask, file2: file2_time_mask, file3: file3_time_mask, file4: file4_time_mask}
 
@@ -43,8 +44,12 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
     df = pd.read_csv(file_path)
     intensities_series = pd.to_numeric(df.iloc[1:, CSV_VOLT_COLUMN], errors='coerce')
     time_series = pd.to_numeric(df.iloc[1:, CSV_TIME_COLUMN], errors='coerce')
+    time_series = time_series[intensities_series < LAZER_ON_TRESHOLD]
+    intensities_series = intensities_series[intensities_series < LAZER_ON_TRESHOLD]
+    time_series = time_series - time_series.iloc[0]
     data_df = pd.DataFrame({'time': time_series, 'intensities': intensities_series}).dropna()
     mask = pd.Series(True, index=data_df.index)
+
     if min_val is not None:
         mask = mask & (data_df['time'] > min_val)
 
@@ -53,6 +58,7 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
 
     time_filtered = data_df.loc[mask, 'time']
     intensities_filtered = data_df.loc[mask, 'intensities']
+
     return time_filtered.values, intensities_filtered.values
 
 
@@ -62,6 +68,7 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
     x_range = np.linspace(min(time), max(time), 1000)
     fitted_curve = gaussian(x_range, *params)
     A, mu, sigma, D = params
+    sigma=abs(sigma)
     A_error, mu_error, sigma_error, D_error = np.sqrt(np.diag(cov_mat))
     print(f"A={A:.2e} ± {A_error:.2e}")
     print(f"mu={mu:.2e} ± {mu_error:.2e}")
@@ -73,6 +80,7 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
     if save:
         plt.savefig(f"{PLOTS_DIRECTORY}intensity_vs_time.png")
     plt.show()
+    return params, cov_mat
 
 def plot_config(plot_title: str, x_label: str, y_label: str) -> None:
     plt.title(plot_title)
@@ -113,7 +121,7 @@ def fix_linear_drift(x_data: np.ndarray, y_data: np.ndarray) -> np.ndarray:
 
 def plot_data(file:str):
     time, intensities = extract_data(file)
-    plt.scatter(time, intensities)
+    plt.scatter(time, intensities, s=DATA_SIZE)
     plt.show()
 
 def parse_file_parameters(file_name: str) -> Tuple[float, float, float]:
@@ -141,28 +149,43 @@ def plot_mu_vs_Vs() -> None:
 def plot_sigma_vs_Vs() -> None:
     Vs_values = []
     sigma_values = []
+    uncertainty_values = []
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
+        uncertainty = np.std(intensities)
         intensities = fix_linear_drift(time, intensities)
-        params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
+
+        params, cov_mat = plot_v_vs_time(time, intensities, uncertainty)
         _, _, sigma, _ = params
+        sigma=abs(sigma)
+        sigma_error = cov_mat[2][2]**0.5
+        sigma_values.append(sigma)
+        uncertainty_values.append(sigma_error)
         vs_value, _, _ = parse_file_parameters(file)
         Vs_values.append(vs_value)
-        sigma_values.append(sigma)
-    plt.scatter(Vs_values, sigma_values, s=DATA_SIZE, color=DADA_COLOR, label="Data")
+    plt.errorbar(Vs_values, sigma_values, yerr=uncertainty_values, color=DADA_COLOR, label="Data")
     plot_config("Sigma vs Source Voltage", "Source Voltage (V)", "Sigma (s)")
+    plt.show()
+
+def plot_gaussians():
+    for file in DATA_FILES:
+        time, intensities = extract_data(file, *MASKS[file])
+        intensities = intensities - min(intensities)
+        vs, _, _ = parse_file_parameters(file)
+        plt.scatter(time, intensities, s=DATA_SIZE,label=f"Vs={vs}")
+    plot_config("Gaussians for Different Source Voltages", "Time (s)", "Intensity (a.u.)")
     plt.show()
 
 
 
 
+
 if __name__ == "__main__":
-    file = file4
-    times, intensities = extract_data(file, *MASKS[file])
+    times, intensities = extract_data(file4, )
     intensities = fix_linear_drift(times, intensities)
-    #plot_v_vs_time(times, intensities, uncertainty=0)
-    plot_mu_vs_Vs()
-    plot_sigma_vs_Vs()
+    plot_v_vs_time(times, intensities, 0)
+
+
 
 
 
