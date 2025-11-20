@@ -4,43 +4,32 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # Load the data
+# data = pd.read_csv('data/v_vs_temp/v_vs_temp_3_11.csv')
 data = pd.read_csv('data/v_vs_temp_even_better/Non-Shifted Results Clean.csv')
 
-# Filter data for time > 2000 seconds
-data_filtered = data[data['Time'] > 2000].copy()
-
-
 # Extract temperature and voltage
-T = data_filtered['Temprature'].values  # Temperature in Celsius
-V = data_filtered['Voltage '].values  # Voltage (related to mobility or carrier concentration)
+# T = data['Temperature'].values  
+# V = data['Voltage 1'].values  
+T = data['Temprature'].values
+V = data['Voltage '].values
+time = data['Time'].values
 
 # Convert temperature to Kelvin
 T_kelvin = T + 273.15
-# T_mask = T_kelvin < 225  
-# T_kelvin = T_kelvin[T_mask]
-# V = V[T_mask]
 
-T_log = np.log(T_kelvin)
-V_log = np.log(V)
+fig, ax1 = plt.subplots(figsize=(10, 6))
+ax1.plot(time, T_kelvin, 'o', label='T', markersize=4, color='orange')
+ax1.set_xlabel('Time (s)')
+ax1.set_ylabel('Temperature (K)', color='orange')
+ax1.tick_params(axis='y', labelcolor='orange')
 
-def model_func(T,a, b):
-    return a * T + b
+ax2 = ax1.twinx()
+ax2.plot(time, V, 'o', label='V', markersize=4, color='blue')
+ax2.set_ylabel('Voltage (V)', color='blue')
+ax2.tick_params(axis='y', labelcolor='blue')
 
-params, covariance = curve_fit(model_func, T_log, V_log, p0=[1.5,0])
-a,b = params
-print(f"Fitted parameters: a = {a}, b = {b}")
-
-x_range = np.linspace(min(T_log), max(T_log), 1000)
-y_fit = model_func(x_range,a, b)
-
-plt.figure(figsize=(10, 6))
-plt.plot(T_log,V_log, 'o', label='Data', markersize=4)
-plt.plot(x_range, y_fit, 'r-', label='Fitted Line')
-# plt.plot(T_kelvin, V, 'o', label='Data', markersize=4)
-plt.xlabel('Temperature (K)')
-plt.ylabel('Voltage (V)')
-plt.title('Voltage vs Temperature')
-plt.grid(True)
-plt.legend()
-plt.savefig('v_vs_temp_fit.png', dpi=300)
+plt.title('Voltage and Temp vs time')
+ax1.grid(True)
+fig.legend(loc='upper right')
+plt.savefig('v_vs_temp.png', dpi=300)
 plt.show()
