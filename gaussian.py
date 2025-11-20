@@ -177,11 +177,17 @@ def plot_gaussians():
     plt.show()
 
 
+def plot_gaussian_fit(file: str) -> None:
+    time, intensities = extract_data(file, *MASKS[file])
+    intensities = fix_linear_drift(time, intensities)
+    uncertainty = np.std(intensities)
+    plot_v_vs_time(time, intensities, uncertainty, save=True)
+
 
 
 
 if __name__ == "__main__":
-    times, intensities = extract_data(file4, )
+    times, intensities = extract_data(file4, *MASKS[file4])
     intensities = fix_linear_drift(times, intensities)
     plot_v_vs_time(times, intensities, 0)
 
