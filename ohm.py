@@ -1,74 +1,98 @@
-import matplotlib.pyplot as plt
-import numpy as np
-
+import inspect
+from typing import List
 from gaussian import *
+import pandas as pd
 
-currents1 = np.array([1, 1.3, 1.66, 1.88, 2, 2.27, 6.86, 8.05, 12.33, 13.76, 16.05, 17.3])
-volts1 = np.array([0.9, 1.14, 1.46, 1.63, 1.71, 1.94, 5.42, 6.28, 9.3, 10.35, 11.85, 12.65])
+OHM_DATA_FILE = "data/ohm_law_data.csv"
+def linear(x, a):
+    return a * x
 
-T2 = 23 #Celsius
-currents2 = np.array([2.95, 4.28, 5.94, 8.02, 13.84, 10.85]) #mA
-volts2 = np.array([3.11, 4.55, 6.15, 8.04, 12.6, 10.17]) #v
-params = np.polyfit(currents2, volts2, 1)
+def square(x, a, b):
+    return a * x**2 + b * x
 
-T3 = 48 # EMF = 1.94mV
-currents3 = np.array([2.94, 7.3, 10.45, 13.05, 5.15])
-volts3 = np.array([3.43, 7.74, 10.5, 12.64, 5.6])
-
-T4 = 91 # EMF = 3.72
-currents4 = np.array([19.85, 15.5, 11.36, 8.37, 7, 3.19, ])
-volts4 = np.array([9.45, 8.2, 6.61, 5.22, 4.6, 2.34, ])
-
-T5 = 70 # EMF = 2.85
-currents5 = np.array([1.02, 5.24, 10, 15.5, 7, 12.07])
-volts5 = np.array([1.2, 5.5, 9, 12.25, 6.8, 10.6])
-
-T6 = 111 # EMF = 4.55
-currents6 = np.array([1, 7.07, 11.33, 19.88, 15.05, 4.04])
-volts6 = np.array([0.66, 3.62, 4.7, 7.1, 5.9, 2.25])
-
-T7 = 141 # EMF = 5.75
-currents7 = np.array([1.2, 19.85, 15.35, 11.1, 7.77, 3.2, 1])
-volts7 = np.array([0.4, 4.1, 3.3, 2.7, 1.88, 0.86, 0.28])
-
-T8 = 50 # EMF = 2.02
-currents8 = np.array([1.13, 12.7, 9.1, 6, 3.6, 6.25])
-volts8 = np.array([1.59, 12.35, 9.35, 6.6, 4.3, 6.9])
-
-T9 = 80 # EMF = 3.26
-currents9 = np.array([0.75, 1.5, 5.05, 8, 9.4, 13, 18.7, 14.7])
-volts9 = np.array([0.85, 1.7, 4.85, 6.88, 7.5, 9.7, 12.46, 10.5])
-
-T10 = 130 # EMF = 5.33
-currents10 = np.array([0.45,3.6, 7.97,11.5,15.18,17.54,19.4])
-volts10 = np.array([0.18,1.4,2.9,3.7,4.5,4.8,4.9])
-
-# T11 between 100 and 130C not measured
-T11 = 100 # EMF = 4.1
-currents11 = np.array([19.88,16.3,13,10,6.97,3,0.37])
-volts11 = np.array([7.8,7.1,6.1,5.3,4.1,2.1,0.29])
-
-plt.scatter(currents2, volts2, label=f"T = {T2}")
-plt.scatter(currents3, volts3, label=f"T = {T3}")
-plt.scatter(currents4, volts4, label=f"T = {T4}")
-plt.scatter(currents5, volts5, label=f"T = {T5}")
-plt.scatter(currents6, volts6, label=f"T = {T6}")
-plt.scatter(currents7, volts7, label=f"T = {T7}")
-plt.scatter(currents8, volts8, label=f"T = {T8}")
-plt.scatter(currents9, volts9, label=f"T = {T9}")
-plt.scatter(currents10, volts10, label=f"T = {T10}")
-plt.scatter(currents11, volts11, label=f"T = {T11}")
-
-def linear(x, m):
-    return m * x
-x_range = np.linspace(min(currents11), max(currents11), 1000)
-params, cov_mat = curve_fit(linear, currents11, volts11)
-m = params[0]
-plt.plot(x_range, linear(x_range, m), label=f"Fit T={T11}C: V={m:.2f}I")
+def cubic(x, a, b):
+    return a * x**3 + b * x
 
 
 
-plt.xlabel("I[mA]")
-plt.ylabel("V[V]")
-plt.legend()
-plt.show()
+df = pd.read_csv(OHM_DATA_FILE)
+df.sort_values(['Temperature_C', 'Voltage_V'], inplace=True)
+temperatures = np.sort(df['Temperature_C'].unique())
+voltage_max = df['Voltage_V'].max()
+v_range = np.linspace(0, voltage_max)
+
+def data_subset_by_temperature(data_frame, temperature):
+    subset = data_frame[data_frame['Temperature_C'] == temperature]
+    voltage = subset['Voltage_V'].values
+    current = subset['Current_A'].values
+    return voltage, current
+
+def compute_r_squared(x, y, model_func, params):
+    residuals = y - model_func(x, *params)
+    ss_res = np.sum(residuals ** 2)  # Residual Sum of Squares
+    ss_tot = np.sum((y - np.mean(y)) ** 2)  # Total Sum of Squares
+    r_squared = 1 - (ss_res / ss_tot)
+    return r_squared
+
+
+def plot_current_vs_voltage(fit_func, specific_temperature: List[int]=None):
+    r_square = {}
+    temperatures_to_plot = temperatures if specific_temperature is None else specific_temperature
+    for T in temperatures_to_plot:
+        voltage, current = data_subset_by_temperature(df, T)
+        popt, pcov = curve_fit(fit_func, voltage, current)
+        sc = plt.scatter(voltage, current, label=f"{T:<10}", s=DATA_SIZE)
+        point_color = sc.get_facecolors()[0]
+        x_range = np.linspace(0, voltage.max())
+        plt.plot(x_range, fit_func(x_range, *popt), color=point_color)
+        r_square[T] = compute_r_squared(voltage, current, fit_func, popt)
+    plot_config("Voltage (V)", "Current (A)", "Current vs Voltage^2 at Different Temperatures")
+    plt.show()
+    print("R^2 values for each temperature:")
+    for T, r2 in r_square.items():
+        print(f"Temperature {T} C: R^2 = {r2:.4f}")
+
+
+def plot_parameters_vs_temperature(func):
+    # 1. Extract parameter names from the function signature
+    sig = inspect.signature(func)
+    # We skip the first parameter (index 0) because it is the independent variable (x/voltage)
+    param_names = list(sig.parameters.keys())[1:]
+
+    # Initialize storage
+    num_params = len(param_names)
+    parameters = np.zeros((num_params, len(temperatures)))
+
+    # 2. Fill Data
+    # Using enumerate is cleaner than np.where
+    for idx, T in enumerate(temperatures):
+        voltage, current = data_subset_by_temperature(df, T)
+        popt, _ = curve_fit(func, voltage, current)
+        parameters[:, idx] = popt  # Fill the whole column at once
+
+    # 3. Plot with Labels
+    for i in range(num_params):
+        # Use param_names[i] for the label
+        plt.plot(temperatures, parameters[i, :], marker='o', label=param_names[i])
+        plt.show()
+    plot_config("Temperature (C)", "Fitted Parameters", "Fitted Parameters vs Temperature")
+    plt.show()
+
+def plot_conductivity_vs_temperature():
+    conductivities = []
+    for T in temperatures:
+        voltage, current = data_subset_by_temperature(df, T)
+        popt, _ = curve_fit(cubic, voltage, current)
+        R = popt[1]  # Since I = (1/R) * V
+        conductivities.append(R)
+    plt.plot(temperatures, conductivities, marker='o')
+    plot_config("Temperature (C)", "Conductivity (S/m)", "Conductivity vs Temperature")
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.show()
+
+#V = IR
+#I = V/R
+if __name__ == "__main__":
+#    plot_conductivity_vs_temperature()
+    plot_parameters_vs_temperature(linear)

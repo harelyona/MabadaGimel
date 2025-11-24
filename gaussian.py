@@ -13,7 +13,7 @@ CSV_TIME_COLUMN = 0
 FIT_COLOR = "blue"
 DADA_COLOR = "black"
 ERROR_BAR_COLOR = "red"
-DATA_SIZE = 4
+DATA_SIZE = 7
 CAPSIZE = 0.5
 d = 0.0027
 LAZER_ON_TRESHOLD = 1.1
@@ -58,12 +58,16 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
 
     time_filtered = data_df.loc[mask, 'time']
     intensities_filtered = data_df.loc[mask, 'intensities']
+    time_values = time_filtered.values
+    time_values = time_values - min(time_values)
+    intensities_values = intensities_filtered.values
+    intensities_values = fix_linear_drift(time_values, intensities_values)
 
-    return time_filtered.values, intensities_filtered.values
+    return time_values, intensities_values
 
 
 
-def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float, save:bool = False) -> None:
+def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float, save:bool = False) -> Tuple[np.ndarray, np.ndarray]:
     params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
     x_range = np.linspace(min(time), max(time), 1000)
     fitted_curve = gaussian(x_range, *params)
@@ -76,17 +80,20 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
     print(f"D={D:.2e} ± {D_error:.2e}")
     plt.plot(x_range, fitted_curve, label="gaussian fit", color=FIT_COLOR)
     plt.errorbar(time, intensities, yerr=uncertainty, label='Data', color=DADA_COLOR, fmt='o', capsize=CAPSIZE, markersize=1, elinewidth=2, ecolor=ERROR_BAR_COLOR)
-    plot_config("Intensity vs Time with Gaussian Fit", "Time", "Intensity")
+    plot_config("Time", "Intensity")
     if save:
         plt.savefig(f"{PLOTS_DIRECTORY}intensity_vs_time.png")
     plt.show()
     return params, cov_mat
 
-def plot_config(plot_title: str, x_label: str, y_label: str) -> None:
+def plot_config(x_label: str, y_label: str, plot_title:str = None) -> None:
     plt.title(plot_title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    plt.legend()
+    # Only show legend if there are labeled artists (labels that don't start with '_')
+    handles, labels = plt.gca().get_legend_handles_labels()
+    if labels:
+        plt.legend()
 
 def linear_fit(x: np.ndarray, y: np.ndarray, show: bool=False) -> Tuple[float, float]:
     slope, intercept = np.polyfit(x, y, 1)
@@ -110,7 +117,7 @@ def plot_all_data(folder: str) -> None:
         d_value = float(match.group(3)) / 1000  # Convert mm to m
         slope, intercept = linear_fit(*extract_data(full_file_path, max_val=0), show=False)
         plt.scatter(time, intensities, label=f"Vs={vs_value}, Vl={vl_value}, d={d_value}", s=DATA_SIZE)
-    plot_config("All Data", "Time", "Intensity")
+    plot_config("Time", "Intensity")
     plt.show()
 
 def fix_linear_drift(x_data: np.ndarray, y_data: np.ndarray) -> np.ndarray:
@@ -136,14 +143,13 @@ def plot_mu_vs_Vs() -> None:
     mu_values = []
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
-        intensities = fix_linear_drift(time, intensities)
         params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
         _, mu, _, _ = params
         vs_value, _, _ = parse_file_parameters(file)
         Vs_values.append(vs_value)
         mu_values.append(mu)
     plt.scatter(Vs_values, mu_values, s=DATA_SIZE, color=DADA_COLOR, label="Data")
-    plot_config("Mobility vs Source Voltage", "Source Voltage (V)", "Mobility (m^2/Vs)")
+    plot_config("Source Voltage (V)", "Mobility (m^2/Vs)")
     plt.show()
 
 def plot_sigma_vs_Vs() -> None:
@@ -153,9 +159,8 @@ def plot_sigma_vs_Vs() -> None:
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
         uncertainty = np.std(intensities)
-        intensities = fix_linear_drift(time, intensities)
 
-        params, cov_mat = plot_v_vs_time(time, intensities, uncertainty)
+        params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
         _, _, sigma, _ = params
         sigma=abs(sigma)
         sigma_error = cov_mat[2][2]**0.5
@@ -163,36 +168,28 @@ def plot_sigma_vs_Vs() -> None:
         uncertainty_values.append(sigma_error)
         vs_value, _, _ = parse_file_parameters(file)
         Vs_values.append(vs_value)
-    plt.errorbar(Vs_values, sigma_values, yerr=uncertainty_values, color=DADA_COLOR, label="Data")
-    plot_config("Sigma vs Source Voltage", "Source Voltage (V)", "Sigma (s)")
+    plt.scatter(Vs_values, sigma_values, s=DATA_SIZE)
+    plot_config("Source Voltage (V)", "Sigma (s)")
     plt.show()
 
 def plot_gaussians():
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
-        intensities = intensities - min(intensities)
         vs, _, _ = parse_file_parameters(file)
         plt.scatter(time, intensities, s=DATA_SIZE,label=f"Vs={vs}")
-    plot_config("Gaussians for Different Source Voltages", "Time (s)", "Intensity (a.u.)")
+    plot_config("Time (s)", "Intensity (a.u.)")
     plt.show()
 
 
 def plot_gaussian_fit(file: str) -> None:
     time, intensities = extract_data(file, *MASKS[file])
-    intensities = fix_linear_drift(time, intensities)
-    uncertainty = np.std(intensities)
-    plot_v_vs_time(time, intensities, uncertainty, save=True)
+    plot_v_vs_time(time, intensities, 0, save=True)
 
 
 
 
 if __name__ == "__main__":
-    times, intensities = extract_data(file4, *MASKS[file4])
-    intensities = fix_linear_drift(times, intensities)
-    plot_v_vs_time(times, intensities, 0)
-
-
-
-
-
-
+    # plot_gaussian_fit(file4)
+    plot_gaussians()
+    # plot_mu_vs_Vs()
+    # plot_sigma_vs_Vs()
