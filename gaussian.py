@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 
 PLOTS_DIRECTORY = "plots/"
 CSV_VOLT_COLUMN = 2
+CSV_ACTIVATION_VOLTAGE_COLUMN = 1
 CSV_TIME_COLUMN = 0
 FIT_COLOR = "blue"
 DADA_COLOR = "black"
@@ -16,12 +17,13 @@ ERROR_BAR_COLOR = "red"
 DATA_SIZE = 7
 CAPSIZE = 0.5
 d = 0.0027
-LAZER_ON_TRESHOLD = 1.1
+ACTIVATION_VOLTAGE_THRESHOLD = 2
+INTENSITY_THRESHOLD = 1.1
 haynes_shockley_dir = "data/Haynes-Shockley"
 file1 = f"{haynes_shockley_dir}/Vs_28.3_Vl_27.7_d_2.7.csv"
-file1_time_mask = (0.00019, 0.00021)
+file1_time_mask = (0.0000125, 0.000032)
 file2 = f"{haynes_shockley_dir}/Vs_35.8_Vl_27.7_d_2.7.csv"
-file2_time_mask = (0.00004, 0.0000575)
+file2_time_mask = (0.0000, 0.000025)
 file3 = f"{haynes_shockley_dir}/Vs_44_Vl_27.7_d_2.7.csv"
 file3_time_mask = (0.00004, 0.0000575)
 file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
@@ -44,24 +46,26 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
     df = pd.read_csv(file_path)
     intensities_series = pd.to_numeric(df.iloc[1:, CSV_VOLT_COLUMN], errors='coerce')
     time_series = pd.to_numeric(df.iloc[1:, CSV_TIME_COLUMN], errors='coerce')
-    time_series = time_series[intensities_series < LAZER_ON_TRESHOLD]
-    intensities_series = intensities_series[intensities_series < LAZER_ON_TRESHOLD]
-    time_series = time_series - time_series.iloc[0]
+    activation_lazer_series = pd.to_numeric(df.iloc[1:, CSV_ACTIVATION_VOLTAGE_COLUMN], errors='coerce')
+    first_time_idx_lazer_on = (activation_lazer_series < ACTIVATION_VOLTAGE_THRESHOLD).idxmax()
+    t0 = time_series[first_time_idx_lazer_on]
+
+
     data_df = pd.DataFrame({'time': time_series, 'intensities': intensities_series}).dropna()
-    mask = pd.Series(True, index=data_df.index)
+    time_mask = pd.Series(True, index=data_df.index)
 
     if min_val is not None:
-        mask = mask & (data_df['time'] > min_val)
+        time_mask = time_mask & (data_df['time'] > min_val)
 
     if max_val is not None:
-        mask = mask & (data_df['time'] < max_val)
-
+        time_mask = time_mask & (data_df['time'] < max_val)
+    mask = (intensities_series < INTENSITY_THRESHOLD) & (time_series >= t0) & time_mask
     time_filtered = data_df.loc[mask, 'time']
     intensities_filtered = data_df.loc[mask, 'intensities']
     time_values = time_filtered.values
-    time_values = time_values - min(time_values)
+    time_values = time_values
     intensities_values = intensities_filtered.values
-    intensities_values = fix_linear_drift(time_values, intensities_values)
+    #intensities_values = fix_linear_drift(time_values, intensities_values)
 
     return time_values, intensities_values
 
@@ -83,6 +87,7 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
     plot_config("Time", "Intensity")
     if save:
         plt.savefig(f"{PLOTS_DIRECTORY}intensity_vs_time.png")
+    plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
     plt.show()
     return params, cov_mat
 
@@ -187,9 +192,16 @@ def plot_gaussian_fit(file: str) -> None:
 
 
 
-
+def plot_all_data(file):
+    df = pd.read_csv(file)
+    time_series = pd.to_numeric(df.iloc[1:, CSV_TIME_COLUMN], errors='coerce')
+    intensities_series = pd.to_numeric(df.iloc[1:, CSV_VOLT_COLUMN], errors='coerce')
+    plt.scatter(time_series, intensities_series, s=DATA_SIZE, label="Intensity")
+    plot_config("Time (s)", "Intensity")
+    plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
+    plt.show()
 if __name__ == "__main__":
-    # plot_gaussian_fit(file4)
-    plot_gaussians()
-    # plot_mu_vs_Vs()
-    # plot_sigma_vs_Vs()
+    file = file2
+    plot_all_data(file)
+    time, intensities = extract_data(file, *MASKS[file])
+    plot_v_vs_time(time, intensities, 0)
