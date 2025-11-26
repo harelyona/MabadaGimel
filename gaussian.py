@@ -25,15 +25,15 @@ file1_time_mask = (0.000013, 0.00003)
 file2 = f"{haynes_shockley_dir}/Vs_35.8_Vl_27.7_d_2.7.csv"
 file2_time_mask = (0.000013, 0.000025)
 file3 = f"{haynes_shockley_dir}/Vs_44_Vl_27.7_d_2.7.csv"
-file3_time_mask = (0.00004, 0.0000575)
+file3_time_mask = (0.000014, 0.000025)
 file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
-file4_time_mask = (0.000043, 0.00006)
+file4_time_mask = (0.000015, 0.00003)
 DATA_FILES = [file1, file2, file3, file4]
 MASKS = {file1: file1_time_mask, file2: file2_time_mask, file3: file3_time_mask, file4: file4_time_mask}
 
 
-def gaussian(x, A, mu, sigma, D):
-    return A * np.exp(- (x - mu)**2 / (2 * sigma**2)) + D
+def gaussian(x, A, mu, sigma):
+    return A * np.exp(- (x - mu)**2 / (2 * sigma**2))
 
 
 def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optional[float] = None) -> Tuple[
@@ -63,7 +63,7 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
     time_filtered = data_df.loc[mask, 'time']
     intensities_filtered = data_df.loc[mask, 'intensities']
     time_values = time_filtered.values
-    time_values = time_values
+    time_values = time_values - t0
     intensities_values = intensities_filtered.values
     intensities_values = fix_linear_drift(time_values, intensities_values)
     intensities_values += abs(min(intensities_values))
@@ -73,16 +73,15 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
 
 
 def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float, save:bool = False) -> Tuple[np.ndarray, np.ndarray]:
-    params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
+    params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5])
     x_range = np.linspace(min(time), max(time), 1000)
     fitted_curve = gaussian(x_range, *params)
-    A, mu, sigma, D = params
+    A, mu, sigma= params
     sigma=abs(sigma)
-    A_error, mu_error, sigma_error, D_error = np.sqrt(np.diag(cov_mat))
+    A_error, mu_error, sigma_error = np.sqrt(np.diag(cov_mat))
     print(f"A={A:.2e} ± {A_error:.2e}")
     print(f"mu={mu:.2e} ± {mu_error:.2e}")
     print(f"sigma={sigma:.2e} ± {sigma_error:.2e}")
-    print(f"D={D:.2e} ± {D_error:.2e}")
     plt.plot(x_range, fitted_curve, label="gaussian fit", color=FIT_COLOR)
     plt.errorbar(time, intensities, yerr=uncertainty, label='Data', color=DADA_COLOR, fmt='o', capsize=CAPSIZE, markersize=1, elinewidth=2, ecolor=ERROR_BAR_COLOR)
     plot_config("Time", "Intensity")
@@ -149,8 +148,8 @@ def plot_mu_vs_Vs() -> None:
     mu_values = []
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
-        params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
-        _, mu, _, _ = params
+        params, _ = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5])
+        _, mu, _ = params
         vs_value, _, _ = parse_file_parameters(file)
         Vs_values.append(vs_value)
         mu_values.append(mu)
@@ -164,10 +163,8 @@ def plot_sigma_vs_Vs() -> None:
     uncertainty_values = []
     for file in DATA_FILES:
         time, intensities = extract_data(file, *MASKS[file])
-        uncertainty = np.std(intensities)
-
-        params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5, min(intensities)])
-        _, _, sigma, _ = params
+        params, cov_mat = curve_fit(gaussian, time, intensities, maxfev=99999, p0=[max(intensities), time[np.argmax(intensities)], 1e-5])
+        _, _, sigma = params
         sigma=abs(sigma)
         sigma_error = cov_mat[2][2]**0.5
         sigma_values.append(sigma)
@@ -202,7 +199,10 @@ def plot_all_data(file):
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
     plt.show()
 if __name__ == "__main__":
-    file = file1
-    plot_all_data(file)
-    time, intensities = extract_data(file, *MASKS[file])
-    plot_v_vs_time(time, intensities, 0)
+    file = file4
+    # plot_all_data(file)
+    # time, intensities = extract_data(file, *MASKS[file])
+    # plot_v_vs_time(time, intensities, 0)
+    plot_gaussians()
+    plot_sigma_vs_Vs()
+    plot_mu_vs_Vs()
