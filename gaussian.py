@@ -21,9 +21,9 @@ ACTIVATION_VOLTAGE_THRESHOLD = 2
 INTENSITY_THRESHOLD = 1.1
 haynes_shockley_dir = "data/Haynes-Shockley"
 file1 = f"{haynes_shockley_dir}/Vs_28.3_Vl_27.7_d_2.7.csv"
-file1_time_mask = (0.0000125, 0.000032)
+file1_time_mask = (0.000013, 0.00003)
 file2 = f"{haynes_shockley_dir}/Vs_35.8_Vl_27.7_d_2.7.csv"
-file2_time_mask = (0.0000, 0.000025)
+file2_time_mask = (0.000013, 0.000025)
 file3 = f"{haynes_shockley_dir}/Vs_44_Vl_27.7_d_2.7.csv"
 file3_time_mask = (0.00004, 0.0000575)
 file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
@@ -65,7 +65,8 @@ def extract_data(file_path: str, min_val: Optional[float] = None, max_val: Optio
     time_values = time_filtered.values
     time_values = time_values
     intensities_values = intensities_filtered.values
-    #intensities_values = fix_linear_drift(time_values, intensities_values)
+    intensities_values = fix_linear_drift(time_values, intensities_values)
+    intensities_values += abs(min(intensities_values))
 
     return time_values, intensities_values
 
@@ -201,7 +202,7 @@ def plot_all_data(file):
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0, 0))
     plt.show()
 if __name__ == "__main__":
-    file = file2
+    file = file1
     plot_all_data(file)
     time, intensities = extract_data(file, *MASKS[file])
     plot_v_vs_time(time, intensities, 0)
