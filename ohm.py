@@ -35,7 +35,7 @@ def compute_r_squared(x, y, model_func, params):
     return r_squared
 
 
-def plot_current_vs_voltage(fit_func, specific_temperature: List[int]=None):
+def plot_current_vs_voltage(fit_func, specific_temperature: List[float]=None):
     r_square = {}
     temperatures_to_plot = temperatures if specific_temperature is None else specific_temperature
     for T in temperatures_to_plot:
@@ -74,6 +74,7 @@ def plot_parameters_vs_temperature(func):
     for i in range(num_params):
         # Use param_names[i] for the label
         plt.plot(temperatures, parameters[i, :], marker='o', label=param_names[i])
+        plt.legend(loc='best')
         plt.show()
     plot_config("Temperature (C)", "Fitted Parameters", "Fitted Parameters vs Temperature")
     plt.show()
@@ -94,5 +95,6 @@ def plot_conductivity_vs_temperature():
 #V = IR
 #I = V/R
 if __name__ == "__main__":
-#    plot_conductivity_vs_temperature()
-    plot_parameters_vs_temperature(linear)
+
+    plot_current_vs_voltage(cubic)
+    plot_parameters_vs_temperature(cubic)
