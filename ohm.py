@@ -1,5 +1,10 @@
 import inspect
+import os.path
 from typing import List
+
+import matplotlib.pyplot as plt
+import numpy as np
+
 from gaussian import *
 import pandas as pd
 
@@ -12,6 +17,9 @@ def square(x, a, b):
 
 def cubic(x, a, b):
     return a * x**3 + b * x
+
+def conductivity_hot_function(x, A):
+    return A * (x)**(1.5)
 
 
 
@@ -35,25 +43,31 @@ def compute_r_squared(x, y, model_func, params):
     return r_squared
 
 
-def plot_current_vs_voltage(fit_func, specific_temperature: List[float]=None):
-    r_square = {}
+def plot_current_vs_voltage(fit_func, specific_temperature: List[float]=None, output_name : str=None):
     temperatures_to_plot = temperatures if specific_temperature is None else specific_temperature
     for T in temperatures_to_plot:
         voltage, current = data_subset_by_temperature(df, T)
         popt, pcov = curve_fit(fit_func, voltage, current)
-        sc = plt.scatter(voltage, current, label=f"{T:<10}", s=DATA_SIZE)
-        point_color = sc.get_facecolors()[0]
+        r_square = compute_r_squared(voltage, current, fit_func, popt)
+        # 1. Capture the return value (the container)
+        container = plt.errorbar(voltage, current, xerr=0.05, yerr=0.0005,
+                                 label=rf"T=${T:<10}^{{\circ}}, r^2 = {r_square:.2f}$",
+                                 fmt='o', capsize=2, ms=4)
+
+        # 2. Extract the color from the first element (the main line/marker)
+        data_color = container[0].get_color()
         x_range = np.linspace(0, voltage.max())
-        plt.plot(x_range, fit_func(x_range, *popt), color=point_color)
-        r_square[T] = compute_r_squared(voltage, current, fit_func, popt)
-    plot_config("Voltage (V)", "Current (A)", "Current vs Voltage^2 at Different Temperatures")
+
+
+        plt.plot(x_range, fit_func(x_range, *popt), color=data_color)
+
+    plot_config("Voltage (V)", "Current (A)")
+    if output_name:
+        plt.savefig(PLOTS_DIRECTORY + output_name + ".png")
     plt.show()
-    print("R^2 values for each temperature:")
-    for T, r2 in r_square.items():
-        print(f"Temperature {T} C: R^2 = {r2:.4f}")
 
 
-def plot_parameters_vs_temperature(func):
+def plot_parameters_vs_temperature(func, save_name=None):
     # 1. Extract parameter names from the function signature
     sig = inspect.signature(func)
     # We skip the first parameter (index 0) because it is the independent variable (x/voltage)
@@ -62,39 +76,51 @@ def plot_parameters_vs_temperature(func):
     # Initialize storage
     num_params = len(param_names)
     parameters = np.zeros((num_params, len(temperatures)))
-
+    errors = np.zeros((num_params, len(temperatures)))
     # 2. Fill Data
     # Using enumerate is cleaner than np.where
     for idx, T in enumerate(temperatures):
         voltage, current = data_subset_by_temperature(df, T)
-        popt, _ = curve_fit(func, voltage, current)
+        popt, pcov = curve_fit(func, voltage, current)
         parameters[:, idx] = popt  # Fill the whole column at once
+        errors[:, idx] = np.sqrt(np.diag(pcov))
 
     # 3. Plot with Labels
     for i in range(num_params):
         # Use param_names[i] for the label
-        plt.plot(temperatures, parameters[i, :], marker='o', label=param_names[i])
+
+        plt.errorbar(temperatures, parameters[i, :], errors[i, :], fmt='-o', label=f"{param_names[i]} Value", capsize=5)
         plt.legend(loc='best')
+        plot_config("Temperature (C)", "Fitted Parameter")
+        if save_name:
+            plt.savefig(PLOTS_DIRECTORY + save_name)
         plt.show()
-    plot_config("Temperature (C)", "Fitted Parameters", "Fitted Parameters vs Temperature")
-    plt.show()
+        break # Only plot the first parameter for brevity
 
 def plot_conductivity_vs_temperature():
     conductivities = []
     for T in temperatures:
         voltage, current = data_subset_by_temperature(df, T)
         popt, _ = curve_fit(cubic, voltage, current)
-        R = popt[1]  # Since I = (1/R) * V
-        conductivities.append(R)
-    plt.plot(temperatures, conductivities, marker='o')
-    plot_config("Temperature (C)", "Conductivity (S/m)", "Conductivity vs Temperature")
-    plt.xscale('log')
-    plt.yscale('log')
+        conductivity = popt[1]  # Since I = (1/R) * V
+        conductivities.append(conductivity)
+    plt.scatter(temperatures, conductivities, marker='o', label="measured conductivity")
+    temperature_range = np.linspace(min(temperatures), max(temperatures))
+    popt, pcov = curve_fit(conductivity_hot_function, temperatures, conductivities)
+    plt.plot(temperature_range, conductivity_hot_function(temperature_range, *popt), label="fit")
+    plot_config("Temperature (C)", "Conductivity (S/m)", )
     plt.show()
 
 #V = IR
 #I = V/R
-if __name__ == "__main__":
+display_temperature = [23, 85, 95, 100, 117,135]
 
-    plot_current_vs_voltage(cubic)
-    plot_parameters_vs_temperature(cubic)
+def main_plot_all_ohms():
+    plot_current_vs_voltage(cubic, specific_temperature=display_temperature, output_name="ohm_law_cubic_partial")
+    plot_current_vs_voltage(linear, specific_temperature=display_temperature, output_name="ohm_law_linear_partial")
+    plot_current_vs_voltage(cubic, output_name="ohm_law_cubic_full")
+    plot_current_vs_voltage(linear, output_name="ohm_law_linear_full")
+
+
+if __name__ == "__main__":
+    plot_conductivity_vs_temperature()

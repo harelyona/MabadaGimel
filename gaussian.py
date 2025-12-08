@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 from typing import Tuple, Optional
 import matplotlib.pyplot as plt
 
-PLOTS_DIRECTORY = "plots/"
+PLOTS_DIRECTORY = "plots" + os.sep
 CSV_VOLT_COLUMN = 2
 CSV_ACTIVATION_VOLTAGE_COLUMN = 1
 CSV_TIME_COLUMN = 0
@@ -30,6 +30,7 @@ file4 = f"{haynes_shockley_dir}/Vs_50_Vl_27.7_d_2.7.csv"
 file4_time_mask = (0.000015, 0.00003)
 DATA_FILES = [file1, file2, file3, file4]
 MASKS = {file1: file1_time_mask, file2: file2_time_mask, file3: file3_time_mask, file4: file4_time_mask}
+PLOT_LABEL_SIZE = 14
 
 
 def gaussian(x, A, mu, sigma):
@@ -93,12 +94,13 @@ def plot_v_vs_time(time: np.ndarray, intensities: np.ndarray, uncertainty: float
 
 def plot_config(x_label: str, y_label: str, plot_title:str = None) -> None:
     plt.title(plot_title)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
+    plt.xlabel(x_label, size=PLOT_LABEL_SIZE)
+    plt.ylabel(y_label, size=PLOT_LABEL_SIZE)
     # Only show legend if there are labeled artists (labels that don't start with '_')
     handles, labels = plt.gca().get_legend_handles_labels()
     if labels:
-        plt.legend()
+        plt.legend(fontsize='small', loc='best')
+
 
 def linear_fit(x: np.ndarray, y: np.ndarray, show: bool=False) -> Tuple[float, float]:
     slope, intercept = np.polyfit(x, y, 1)
